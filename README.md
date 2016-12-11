@@ -4,6 +4,14 @@ To store and provide information about running game servers
 
 ## Setup
 
+### Setup DB Schema
+
+To setup the base DB schema use the file `sql/0000_initial.sql`.
+
+```
+psql -1f sql/0000_initial.sql -h [hostname] [database_name]
+````
+
 ### Install Dependencies 
 
 `pip install -r requirements.txt`
