@@ -1,9 +1,11 @@
-import hug, log
+import hug
 from psycopg2.extras import Json
 from marshmallow import fields
-from db import DB
+
+from core import log
+from core.db import DB
+from core.config import settings
 from utilities import response, response_positive, response_error
-from config import settings
 
 # setup the DB
 db = DB()

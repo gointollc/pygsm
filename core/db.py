@@ -1,5 +1,7 @@
-import psycopg2, psycopg2.extensions, psycopg2.extras, log
-from config import settings
+import psycopg2, psycopg2.extensions, psycopg2.extras
+
+from core import log
+from core.config import settings
 
 
 class DB:

@@ -1,4 +1,6 @@
-import sys, configparser, logging, log
+import sys, configparser, logging
+
+from core import log
 from utilities import exists
 
 config = configparser.ConfigParser()

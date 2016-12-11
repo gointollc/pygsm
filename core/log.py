@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
-from config import settings
+
+from core.config import settings
 
 logging.basicConfig(filename = settings['LOG_FILE'], level = settings['LOG_LEVEL'])
 
