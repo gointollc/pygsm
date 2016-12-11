@@ -25,10 +25,19 @@ from marshmallow import fields
 from core import log
 from core.db import DB
 from core.config import settings
+from core.auth import authenticate
 from utilities import response, response_positive, response_error
 
 # setup the DB
 db = DB()
+
+# setup auth
+psk_authentication = hug.authentication.api_key(authenticate)
+
+@hug.http('/auth-test', accept=('GET', 'POST'), requires=psk_authentication)
+def auth_test():
+    """ Simple authentication test """
+    return response_positive("Success")
 
 @hug.get('/game', examples='game_uuid=777ab9da-bc9a-4fe5-88da-b925e44909b3')
 def game(game_uuid: hug.types.uuid = None):
@@ -86,7 +95,7 @@ def server(dev=False):
 
         return response_error("No servers found", 404)
 
-@hug.post('/server')
+@hug.post('/server', requires=psk_authentication)
 def ping(hostname: hug.types.text, port: hug.types.number, 
     name: hug.types.text, activePlayers: hug.types.number, 
     gameid: hug.types.text, maxPlayers: hug.types.number = 8, 
@@ -207,7 +216,7 @@ def game_player(game_player_id: hug.types.number = None):
 
         return response_error("No players found.", 404)
 
-@hug.post('/game-player')
+@hug.post('/game-player', requires=psk_authentication)
 def add_player(game_uuid: hug.types.uuid, meta: hug.types.json):
     """ Add a player to the game """
 
@@ -273,7 +282,7 @@ def leaderboard(game_player_id: hug.types.number = None, game_uuid: hug.types.uu
 
         return response_error("No leaderboard entries found.", 404)
 
-@hug.post('/game-player/stats')
+@hug.post('/game-player/stats', requires=psk_authentication)
 def leaderboard_add(game_player_id: hug.types.number, kills: hug.types.number, 
     deaths: hug.types.number):
     """ Add a leaderboard entry for a player """

@@ -67,6 +67,9 @@ settings['DB_PASS'] = config.get('Database', 'password', fallback=None)
 # Optional preferences
 settings['GAME_MAX_AGE'] = config.getint('Pref', 'game_max_age', fallback=30)
 
+# Auth
+settings['AUTH_PSK_FORMAT'] = config.get('Auth', 'psk_format', fallback='string')
+
 # Make sure we have the required settings
 if not (settings['DB_HOST'] and settings['DB_USER'] and settings['DB_PASS']):
     log.critical("ERROR: hostname, username, and password must be defined in pygsm.cfg for pygsm to function")

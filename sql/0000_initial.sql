@@ -6,21 +6,21 @@
 
 CREATE TABLE game (
     game_uuid uuid UNIQUE PRIMARY KEY,
-    game_id varchar,
-    stamp timestamp default now()
+    game_id varchar NOT NULL,
+    stamp timestamp DEFAULT NOW() NOT NULL
 );
 CREATE INDEX game__stamp__idx ON game (stamp);
 
 CREATE TABLE ping (
     ping_id serial PRIMARY KEY,
-    hostname varchar, 
-    port int, 
-    name varchar,
-    ping timestamp,
-    active int,
-    max int,
-    dev boolean,
-    game_uuid uuid REFERENCES game (game_uuid),
+    hostname varchar NOT NULL, 
+    port int NOT NULL, 
+    name varchar NOT NULL,
+    ping timestamp DEFAULT NOW() NOT NULL,
+    active int NOT NULL,
+    max int NOT NULL,
+    dev boolean DEFAULT TRUE,
+    game_uuid uuid REFERENCES game (game_uuid) NOT NULL,
     UNIQUE (hostname, port)
 );
 CREATE INDEX ping__ping__idx ON ping (ping);
@@ -28,7 +28,7 @@ CREATE INDEX ping__dev ON ping (dev);
 
 CREATE TABLE game_player (
     game_player_id serial PRIMARY KEY,
-    game_uuid uuid REFERENCES game (game_uuid),
+    game_uuid uuid REFERENCES game (game_uuid) NOT NULL,
     meta jsonb,
     UNIQUE (game_player_id, game_uuid)
 );
@@ -36,8 +36,15 @@ CREATE INDEX game_player__game_uuid__idx ON game_player (game_uuid);
 
 CREATE TABLE leaderboard (
     leaderboard_id serial PRIMARY KEY,
-    game_player_id int REFERENCES game_player (game_player_id),
-    kills int,
-    deaths int
+    game_player_id int REFERENCES game_player (game_player_id) NOT NULL,
+    kills int NOT NULL,
+    deaths int NOT NULL
 );
 CREATE INDEX leaderboard__game_player_id__idx ON leaderboard (game_player_id);
+
+CREATE TABLE psk (
+    psk varchar PRIMARY KEY,
+    development boolean DEFAULT TRUE,
+    description text,
+    active boolean DEFAULT TRUE
+);

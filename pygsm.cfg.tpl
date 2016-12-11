@@ -20,4 +20,10 @@ password    =
 [Pref]
 ; Maximum age of games to display
 ; Default: 30
-;game_max_age = 30           
+;game_max_age = 30
+
+[Auth]
+; The format the PSK should be in.  Valid options are string, md5, and 
+; uuid.
+; Default: string
+;psk_format  = string
