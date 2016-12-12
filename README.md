@@ -38,7 +38,8 @@ TODO
 
 ### Headers
 
-`X-Api-Key` - This header is required for any API call that writes to the database.  It needs to be a PSK that is active in the database.  It also differentiates between development and production data.
+`X-Api-Key`
+:  This header is required for any API call that writes to the database.  It needs to be a PSK that is active in the database.  It also differentiates between development and production data.
 
 ### GET,POST /auth-test
 
