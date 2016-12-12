@@ -20,7 +20,6 @@ not, see <http://www.gnu.org/licenses/>.
 """
 import sys, configparser, logging
 
-from core import log
 from utilities import exists
 
 config = configparser.ConfigParser()
@@ -55,7 +54,7 @@ DB config
 
 # Check and make sure the section exists
 if not exists(config, 'Database'):
-    log.critical("ERROR: Database section must be defined in pygsm.cfg for pygsm to function")
+    print("ERROR: Database section must be defined in pygsm.cfg for pygsm to function")
     sys.exit(1)
 
 settings['DB_HOST'] = config.get('Database', 'hostname', fallback='localhost')
@@ -72,5 +71,5 @@ settings['AUTH_PSK_FORMAT'] = config.get('Auth', 'psk_format', fallback='string'
 
 # Make sure we have the required settings
 if not (settings['DB_HOST'] and settings['DB_USER'] and settings['DB_PASS']):
-    log.critical("ERROR: hostname, username, and password must be defined in pygsm.cfg for pygsm to function")
+    print("ERROR: hostname, username, and password must be defined in pygsm.cfg for pygsm to function")
     sys.exit(1)
