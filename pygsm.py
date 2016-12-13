@@ -102,6 +102,8 @@ def ping(hostname: hug.types.text, port: hug.types.number,
     dev: hug.types.boolean = False):
     """ Add/update new server """
 
+    log.info("ping(hostname: %s, port: %s, name: %s, activePlayers: %s, gameid: %s, maxPlayers: %s, dev: %s)" % (hostname, port, name, activePlayers, gameid, maxPlayers, dev))
+
     # things we'll populate later, maybe
     latest = None
     game_uuid = None
