@@ -4,6 +4,8 @@
 -- requires Postgresql 9.6+
 -- 
 
+CREATE EXTENSION "uuid-ossp";
+
 CREATE TABLE game (
     game_uuid uuid UNIQUE PRIMARY KEY,
     game_id varchar NOT NULL,
