@@ -157,7 +157,7 @@ def ping(hostname: hug.types.text, port: hug.types.number,
     # if there's not already an entry for this server...
     if not latest:
 
-        # add one
+        # add or update one
         db.cursor.execute("""INSERT INTO ping 
             (hostname, port, name, ping, active, max, dev, game_uuid) 
             VALUES (%s, %s, %s, now(), %s, %s, %s, %s)
@@ -166,11 +166,6 @@ def ping(hostname: hug.types.text, port: hug.types.number,
             game_uuid = %s""", 
             [hostname, port, name, activePlayers, maxPlayers, dev, game_uuid,
             name, activePlayers, maxPlayers, dev, game_uuid])
-
-    # otherwise, let's update the record
-    else:
-
-        db.cursor.execute("")
 
     if db.cursor.rowcount < 1:
         log.error("Ping failed!")
