@@ -87,6 +87,7 @@ def server(dev=False):
                 'ping': row['ping'],
                 'activePlayers': row['active'],
                 'maxPlayers': row['max'],
+                'game_uuid': str(row['game_uuid']),
                 })
 
         return response(results)
