@@ -91,6 +91,20 @@ Add a server or 'ping' to update the server data.  `hostname` and `port` must be
 `dev`
 : *boolean* Whether or not the server is a development server.
 
+### DELETE /server
+
+"Shutdown" a server and remove it's listing from display.
+
+#### Parameters
+
+**Note**: These must be URL parameters.  For example: `/server?hostname=test.foo.com&port=1234`.
+
+`hostname`
+: *string* The hostname or IP address of the server.
+
+`port`
+: *integer* The port number used to connect to the instance
+
 ### GET /game-player
 
 **Authentication**: Required for development data. Some data may be censored if a PSK is not provided.
