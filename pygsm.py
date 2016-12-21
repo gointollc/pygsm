@@ -72,6 +72,7 @@ def server(dev=False):
         active, max, dev, game_uuid 
         FROM ping
         WHERE ping > now() - interval '5 minutes'
+        AND down = false
         ORDER BY RANDOM()""")
 
 
@@ -164,7 +165,7 @@ def ping(hostname: hug.types.text, port: hug.types.number,
             VALUES (%s, %s, %s, now(), %s, %s, %s, %s)
             ON CONFLICT ON CONSTRAINT ping_hostname_port_key DO UPDATE 
             SET name = %s, ping = now(), active = %s, max = %s, dev = %s, 
-            game_uuid = %s""", 
+            game_uuid = %s, down = false""", 
             [hostname, port, name, activePlayers, maxPlayers, dev, game_uuid,
             name, activePlayers, maxPlayers, dev, game_uuid])
 
@@ -175,6 +176,24 @@ def ping(hostname: hug.types.text, port: hug.types.number,
     else:
         db.conn.commit()
         return response_positive("Ping successful!")
+
+@hug.delete('/server')
+def server(hostname: hug.types.text, port: hug.types.number):
+    """ Remove an active server """
+
+    db.cursor.execute("""UPDATE ping SET down = true 
+        WHERE hostname = %s AND port = %s""", (hostname, port))
+
+
+    if db.cursor.rowcount > 0:
+
+        db.conn.commit()
+        return response_positive("Shutdown successful!")
+
+    else:
+
+        db.conn.rollback()
+        return response_error("No servers found", 404)
 
 @hug.get('/game-player', examples="game_player_id=1")
 def game_player(game_player_id: hug.types.number = None):

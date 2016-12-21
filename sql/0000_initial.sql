@@ -18,10 +18,11 @@ CREATE TABLE ping (
     hostname varchar NOT NULL, 
     port int NOT NULL, 
     name varchar NOT NULL,
-    ping timestamp DEFAULT NOW() NOT NULL,
     active int NOT NULL,
     max int NOT NULL,
     dev boolean DEFAULT TRUE,
+    down boolean DEFAULT FALSE,
+    ping timestamp DEFAULT NOW() NOT NULL,
     game_uuid uuid REFERENCES game (game_uuid) NOT NULL,
     UNIQUE (hostname, port)
 );
