@@ -165,3 +165,19 @@ Show game stats like kills and deaths.
 
 `leaderboard_id`
 : *integer* The ID of the specific leaderboard entry you want
+
+### POST /register-kill
+
+**Authentication**: Required. 
+
+Register a kill and/or death, if applicable)
+
+#### Parameters
+
+**NOTE**: At least one parameter should be provided. 
+
+`alive_game_player_id`
+: *integer* The ID of the game player that gets gredit for the kill.
+
+`dead_game_player_id`
+: *integer* The ID of the game player that was killed.

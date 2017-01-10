@@ -19,6 +19,7 @@ received a copy of the GNU General Public License along with pygsm. If
 not, see <http://www.gnu.org/licenses/>.
 """
 import hug
+from psycopg2 import IntegrityError
 from psycopg2.extras import Json
 from marshmallow import fields
 
@@ -256,25 +257,28 @@ def leaderboard(game_player_id: hug.types.number = None, game_uuid: hug.types.uu
 
     if game_player_id:
 
-        db.cursor.execute("""SELECT leaderboard_id, game_player_id, 
-            kills, deaths 
+        db.cursor.execute("""SELECT game_player_id, 
+            SUM(kills) AS kills, SUM(deaths) AS deaths
             FROM leaderboard
-            WHERE game_player_id = %s""", [game_player_id])
+            WHERE game_player_id = %s
+            GROUP BY game_player_id""", [game_player_id])
 
     elif game_uuid:
 
-        db.cursor.execute("""SELECT leaderboard_id, game_player_id, 
-            kills, deaths 
+        db.cursor.execute("""SELECT game_player_id, 
+            SUM(kills) AS kills, SUM(deaths) AS deaths
             FROM leaderboard l
             JOIN game_player gp USING (game_player_id)
-            WHERE game_uuid = %s""", [game_uuid])
+            WHERE game_uuid = %s
+            GROUP BY game_player_id""", [game_uuid])
 
     elif leaderboard_id:
 
-        db.cursor.execute("""SELECT leaderboard_id, game_player_id, 
-            kills, deaths 
+        db.cursor.execute("""SELECT game_player_id, 
+            SUM(kills) AS kills, SUM(deaths) AS deaths
             FROM leaderboard l
-            WHERE leaderboard_id = %s""", [leaderboard_id])
+            WHERE leaderboard_id = %s
+            GROUP BY game_player_id""", [leaderboard_id])
 
     else:
         # TODO: aggregate display
@@ -287,7 +291,6 @@ def leaderboard(game_player_id: hug.types.number = None, game_uuid: hug.types.uu
         for row in db.cursor.fetchall():
 
             results.append({
-                'leaderboard_id': row['leaderboard_id'],
                 'game_player_id': row['game_player_id'],
                 'kills': row['kills'],
                 'deaths': row['deaths'],
@@ -315,3 +318,83 @@ def leaderboard_add(game_player_id: hug.types.number, kills: hug.types.number,
     else:
         db.conn.commit()
         return response_positive("Successfully added player stats.")
+
+@hug.post('/register-kill', requires=psk_authentication)
+def leaderboard_register_kill(alive_game_player_id: hug.types.number, 
+    dead_game_player_id: hug.types.number = None):
+    """ Register a kill for leaderboard update """
+
+    # sanity check
+    if not alive_game_player_id and not dead_game_player_id:
+        return response_error("Invalid parameters", code=400)
+
+    error = False
+    error_code = 500
+    error_messages = []
+
+    # First, let's register the kill for the alive player
+
+    if alive_game_player_id:
+
+        try:
+
+            db.cursor.execute("""INSERT INTO leaderboard (game_player_id, kills, deaths)
+            VALUES (%s, %s, %s)""", [alive_game_player_id, 1, 0])
+
+            if db.cursor.rowcount < 1:
+                errmsg = "Player kill increment failed!"
+                log.error(errmsg)
+                db.conn.rollback()
+                error = True
+                error_messages.append(errmsg)
+            else:
+                db.conn.commit()
+
+        except IntegrityError:
+            errmsg = "Player kill increment failed! Invalid game_player_id?"
+            log.error(errmsg)
+            db.conn.rollback()
+            error = True
+            error_code = 400
+            error_messages.append(errmsg)
+        except Exception as e:
+            log.error(str(e))
+            db.conn.rollback()
+            error = True
+            error_messages.append(str(e))
+
+    # Now handle the death of the dead player
+
+    if dead_game_player_id:
+
+        try:
+        
+            db.cursor.execute("""INSERT INTO leaderboard (game_player_id, kills, deaths)
+            VALUES (%s, %s, %s)""", [dead_game_player_id, 0, 1])
+
+            if db.cursor.rowcount < 1:
+                errmsg = "Player death increment failed!"
+                log.error(errmsg)
+                db.conn.rollback()
+                error = True
+                error_messages.append(errmsg)
+            else:
+                db.conn.commit()
+
+        except IntegrityError:
+            errmsg = "Player death increment failed! Invalid game_player_id?"
+            log.error(errmsg)
+            db.conn.rollback()
+            error = True
+            error_code = 400
+            error_messages.append(errmsg)
+        except Exception as e:
+            log.error(str(e))
+            db.conn.rollback()
+            error = True
+            error_messages.append(str(e))
+    
+    if error:
+        return response_error(' '.join(error_messages), code=error_code)
+    else:
+        return response_positive("Successfully updated player stats.")
