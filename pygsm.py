@@ -19,6 +19,7 @@ received a copy of the GNU General Public License along with pygsm. If
 not, see <http://www.gnu.org/licenses/>.
 """
 import hug
+from urllib import parse
 from psycopg2 import IntegrityError
 from psycopg2.extras import Json
 from marshmallow import fields
@@ -248,7 +249,8 @@ def add_player(game_uuid: hug.types.uuid, meta: hug.types.json):
         return response_error(errmsg)
     else:
         db.conn.commit()
-        return response_positive("Successfully added player.")
+        new_player = db.cursor.fetchone()
+        return response([new_player, ])
 
 @hug.get('/leaderboard')
 def leaderboard(game_player_id: hug.types.number = None, game_uuid: hug.types.uuid = None, 
