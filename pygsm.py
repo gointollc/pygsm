@@ -24,7 +24,7 @@ from psycopg2 import IntegrityError, ProgrammingError
 from psycopg2.extras import Json
 from marshmallow import fields
 
-from core import log
+from core import log, zero_uuid
 from core.db import db_connection, db_cursor
 from core.config import settings
 from core.auth import authenticate
@@ -265,6 +265,10 @@ def game_player(game_player_id: hug.types.number = None):
 @hug.post('/game-player', requires=psk_authentication)
 def add_player(game_uuid: hug.types.uuid, meta: hug.types.json):
     """ Add a player to the game """
+
+    # sanity check
+    if game_uuid == zero_uuid:
+        return response_error("Invalid UUID")
 
     try:
         db_cursor.execute("""INSERT INTO game_player (game_uuid, meta) 
