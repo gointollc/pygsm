@@ -82,8 +82,8 @@ Add a server or 'ping' to update the server data.  `hostname` and `port` must be
 `activePlayers`
 : *integer* Current active players
 
-`gameid`
-: *string* The ID for the game currently running.  This ID is not used internally, but should be unique.
+`game_uuid`
+: *uuid* The UUID for the game currently running.
 
 `maxPlayers`
 : *integer* The maximum players that can connect to the server.
