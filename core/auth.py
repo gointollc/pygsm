@@ -24,10 +24,8 @@ auth.py
 This file handles authentication for the API on methods that require it.
 """
 import uuid
-from core.db import DB
+from core.db import db_connection, db_cursor
 from core.config import settings
-
-db = DB()
 
 """ Exceptions """
 class InvalidValidator(TypeError): pass
@@ -122,11 +120,11 @@ class Auth:
     def check_db(self):
         """ Check the PSK against the database """
 
-        db.cursor.execute("""SELECT psk, development, description FROM 
+        db_cursor.execute("""SELECT psk, development, description FROM 
             psk WHERE active = true AND psk = %s""", [self.psk])
         
-        if db.cursor.rowcount > 0:
-            psk_entry = db.cursor.fetchone()
+        if db_cursor.rowcount > 0:
+            psk_entry = db_cursor.fetchone()
             description = psk_entry['description']
             development = psk_entry['development']
             return True

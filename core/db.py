@@ -18,39 +18,41 @@ See the GNU General Public License for more details. You should have
 received a copy of the GNU General Public License along with pygsm. If 
 not, see <http://www.gnu.org/licenses/>.
 """
-import psycopg2, psycopg2.extensions, psycopg2.extras
+import sys, psycopg2, psycopg2.extensions, psycopg2.extras
 
 from core import log
 from core.config import settings
 
+# We want to assign directly to this module
+this = sys.modules[__name__]
 
-class DB:
-    """ Handles database functions """
-    
-    conn = None
-    cursor = None
+this.db_connection = None
+this.db_cursor = None
 
-    def __init__(self):
-        self.connect()
-        psycopg2.extras.register_uuid()
-        psycopg2.extras.register_default_jsonb(self.conn)
+# functions
+def connect():
+    """ Connect to the database """
 
-    def connect(self):
-        """ Connect to the database """
+    this.db_connection = psycopg2.connect(
+        database    = settings['DB_NAME'],
+        user        = settings['DB_USER'],
+        password    = settings['DB_PASS'],
+        host        = settings['DB_HOST'],
+        port        = settings['DB_PORT']
+    )
 
-        self.conn = psycopg2.connect(
-            database    = settings['DB_NAME'],
-            user        = settings['DB_USER'],
-            password    = settings['DB_PASS'],
-            host        = settings['DB_HOST'],
-            port        = settings['DB_PORT']
-        )
+    if this.db_connection.status != psycopg2.extensions.STATUS_READY:
+        # oops
+        log.error("ERROR: Database connection failed!")
+    else:
+        # get the cursor
+        this.db_cursor = db_connection.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-        if self.conn.status != psycopg2.extensions.STATUS_READY:
-            # oops
-            log.error("ERROR: Database connection failed!")
-        else:
-            # get the cursor
-            self.cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    return this.db_connection
 
-        return self.conn
+# setup
+if __name__ != '__main__':
+
+    connect()
+    psycopg2.extras.register_uuid()
+    psycopg2.extras.register_default_jsonb(this.db_connection)

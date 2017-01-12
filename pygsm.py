@@ -25,13 +25,11 @@ from psycopg2.extras import Json
 from marshmallow import fields
 
 from core import log
-from core.db import DB
+from core.db import db_connection, db_cursor
 from core.config import settings
 from core.auth import authenticate
+from core.decorators import rollback_on_failure
 from utilities import response, response_positive, response_error
-
-# setup the DB
-db = DB()
 
 # setup auth
 psk_authentication = hug.authentication.api_key(authenticate)
@@ -45,15 +43,15 @@ def auth_test():
 def game(game_uuid: hug.types.uuid = None):
     """ Returns basic game information """
     if game_uuid:
-        db.cursor.execute("SELECT game_uuid, stamp FROM game WHERE game_uuid=%s", [game_uuid])
+        db_cursor.execute("SELECT game_uuid, stamp FROM game WHERE game_uuid=%s", [game_uuid])
     else:
-        db.cursor.execute("SELECT game_uuid, stamp FROM game WHERE stamp > now() - interval '%s days'", [settings['GAME_MAX_AGE']])
+        db_cursor.execute("SELECT game_uuid, stamp FROM game WHERE stamp > now() - interval '%s days'", [settings['GAME_MAX_AGE']])
 
-    if db.cursor.rowcount > 0:
+    if db_cursor.rowcount > 0:
 
         results = []
 
-        for row in db.cursor.fetchall():
+        for row in db_cursor.fetchall():
 
             results.append({
                 'game_uuid': str(row['game_uuid']),
@@ -70,7 +68,7 @@ def game(game_uuid: hug.types.uuid = None):
 def server(dev=False):
     """ Get active servers """
 
-    db.cursor.execute("""SELECT ping_id, hostname, port, name, ping, 
+    db_cursor.execute("""SELECT ping_id, hostname, port, name, ping, 
         active, max, dev, game_uuid 
         FROM ping
         WHERE ping > now() - interval '5 minutes'
@@ -78,11 +76,11 @@ def server(dev=False):
         ORDER BY RANDOM()""")
 
 
-    if db.cursor.rowcount > 0:
+    if db_cursor.rowcount > 0:
 
         results = []
 
-        for row in db.cursor.fetchall():
+        for row in db_cursor.fetchall():
             results.append({
                 'hostname': row['hostname'],
                 'port': row['port'],
@@ -99,6 +97,7 @@ def server(dev=False):
 
         return response_error("No servers found", 404)
 
+@rollback_on_failure
 @hug.post('/server', requires=psk_authentication)
 def ping(hostname: hug.types.text, port: hug.types.number, 
     name: hug.types.text, activePlayers: hug.types.number, 
@@ -113,7 +112,7 @@ def ping(hostname: hug.types.text, port: hug.types.number,
     new_game = False
 
     # Look for previous entries for this server
-    db.cursor.execute("""SELECT 
+    db_cursor.execute("""SELECT 
         ping_id, hostname, port, name, ping, active, max, dev, game_uuid 
         FROM ping 
         WHERE hostname = %s AND port = %s 
@@ -121,8 +120,8 @@ def ping(hostname: hug.types.text, port: hug.types.number,
         ORDER BY ping DESC""", 
         [hostname, port])
 
-    if db.cursor.rowcount > 0:
-        latest = db.cursor.fetchone()
+    if db_cursor.rowcount > 0:
+        latest = db_cursor.fetchone()
         if game_uuid != latest['game_uuid']:
             new_game = True
 
@@ -130,13 +129,17 @@ def ping(hostname: hug.types.text, port: hug.types.number,
     # create one
     if not game_uuid:
         # create a new game entry
-        db.cursor.execute("INSERT INTO game (stamp) VALUES (now()) RETURNING game_uuid")
+        try:
+            db_cursor.execute("INSERT INTO game (stamp) VALUES (now()) RETURNING game_uuid")
+        except Exception as e:
+            log.error(str(e))
+            return response_error("Internal pygsm error. See logs for more details.")
 
         # if that was successful...
-        if db.cursor.rowcount > 0:
-            db.conn.commit()
+        if db_cursor.rowcount > 0:
+            db_connection.commit()
             # get the game_uuid we just created
-            game_uuid = db.cursor.fetchone()[0]
+            game_uuid = db_cursor.fetchone()[0]
             
         # if it wasn't...
         else:
@@ -148,14 +151,14 @@ def ping(hostname: hug.types.text, port: hug.types.number,
     elif new_game:
         # create a new game entry
         try:
-            db.cursor.execute("INSERT INTO game (game_uuid, stamp) VALUES (%s, now()) RETURNING game_uuid", (game_uuid, ))
+            db_cursor.execute("INSERT INTO game (game_uuid, stamp) VALUES (%s, now()) RETURNING game_uuid", (game_uuid, ))
         except IntegrityError as e:
             log.error(str(e))
             return response_error("Could not create new game with provided game_uuid")
 
         # if that was successful...
-        if db.cursor.rowcount > 0:
-            db.conn.commit()
+        if db_cursor.rowcount > 0:
+            db_connection.commit()
 
         # if it wasn't...
         else:
@@ -169,43 +172,55 @@ def ping(hostname: hug.types.text, port: hug.types.number,
     if not latest and game_uuid:
 
         # add or update one
-        db.cursor.execute("""INSERT INTO ping 
-            (hostname, port, name, ping, active, max, dev, game_uuid) 
-            VALUES (%s, %s, %s, now(), %s, %s, %s, %s)
-            ON CONFLICT ON CONSTRAINT ping_hostname_port_key DO UPDATE 
-            SET name = %s, ping = now(), active = %s, max = %s, dev = %s, 
-            game_uuid = %s, down = false""", 
-            [hostname, port, name, activePlayers, maxPlayers, dev, game_uuid,
-            name, activePlayers, maxPlayers, dev, game_uuid])
+        try:
 
-        if db.cursor.rowcount < 1:
+            db_cursor.execute("""INSERT INTO ping 
+                (hostname, port, name, ping, active, max, dev, game_uuid) 
+                VALUES (%s, %s, %s, now(), %s, %s, %s, %s)
+                ON CONFLICT ON CONSTRAINT ping_hostname_port_key DO UPDATE 
+                SET name = %s, ping = now(), active = %s, max = %s, dev = %s, 
+                game_uuid = %s, down = false""", 
+                [hostname, port, name, activePlayers, maxPlayers, dev, game_uuid,
+                name, activePlayers, maxPlayers, dev, game_uuid])
+
+        except Exception as e:
+            log.error(str(e))
+            return response_error("Internal pygsm error. See logs for more details.")
+
+        if db_cursor.rowcount < 1:
             log.error("Ping failed!")
-            db.conn.rollback()
+            db_connection.rollback()
             return response_error("Ping failed for unknown reasons!")
         else:
-            db.conn.commit()
+            db_connection.commit()
             return response_positive("Ping successful!")
 
     else:
-        db.conn.rollback()
+        db_connection.rollback()
         return response_positive("Ping uneventful!")
 
+@rollback_on_failure
 @hug.delete('/server')
 def server(hostname: hug.types.text, port: hug.types.number):
     """ Remove an active server """
 
-    db.cursor.execute("""UPDATE ping SET down = true 
-        WHERE hostname = %s AND port = %s""", (hostname, port))
+    try:
 
+        db_cursor.execute("""UPDATE ping SET down = true 
+            WHERE hostname = %s AND port = %s""", (hostname, port))
 
-    if db.cursor.rowcount > 0:
+    except Exception as e:
+        log.error(str(e))
+        return response_error("Internal pygsm error. See logs for more details.")
 
-        db.conn.commit()
+    if db_cursor.rowcount > 0:
+
+        db_connection.commit()
         return response_positive("Shutdown successful!")
 
     else:
 
-        db.conn.rollback()
+        db_connection.rollback()
         return response_error("No servers found", 404)
 
 @hug.get('/game-player', examples="game_player_id=1")
@@ -214,21 +229,21 @@ def game_player(game_player_id: hug.types.number = None):
 
     if game_player_id:
 
-        db.cursor.execute("""SELECT game_player_id, game_uuid, meta 
+        db_cursor.execute("""SELECT game_player_id, game_uuid, meta 
             FROM game_player gp
             WHERE game_player_id = %s""", [game_player_id])
 
     else:
 
-        db.cursor.execute("""SELECT game_player_id, game_uuid
+        db_cursor.execute("""SELECT game_player_id, game_uuid
             FROM game_player gp
             JOIN game g USING (game_uuid)
             WHERE g.stamp > now() - interval '%s days'""", [settings['GAME_MAX_AGE']])
 
-    if db.cursor.rowcount > 0:
+    if db_cursor.rowcount > 0:
         players = []
 
-        for row in db.cursor.fetchall():
+        for row in db_cursor.fetchall():
 
             players.append({
                 'game_player_id': row['game_player_id'],
@@ -246,26 +261,30 @@ def game_player(game_player_id: hug.types.number = None):
 
         return response_error("No players found.", 404)
 
+@rollback_on_failure
 @hug.post('/game-player', requires=psk_authentication)
 def add_player(game_uuid: hug.types.uuid, meta: hug.types.json):
     """ Add a player to the game """
 
     try:
-        db.cursor.execute("""INSERT INTO game_player (game_uuid, meta) 
+        db_cursor.execute("""INSERT INTO game_player (game_uuid, meta) 
             VALUES (%s, %s) RETURNING game_uuid""", [game_uuid, Json(meta)])
     except IntegrityError as e:
         log.warning(str(e))
         return response_error("Invalid game_uuid provided")
+    except Exception as e:
+        log.error(str(e))
+        return response_error("Internal pygsm error. See logs for more details.")
 
-    if db.cursor.rowcount < 1:
+    if db_cursor.rowcount < 1:
         errmsg = "Player insert failed!"
         log.error(errmsg)
-        db.conn.rollback()
+        db_connection.rollback()
         return response_error(errmsg)
     else:
-        db.conn.commit()
+        db_connection.commit()
         try:
-            new_player = db.cursor.fetchone()
+            new_player = db_cursor.fetchone()
         except ProgrammingError:
             new_player = None
         return response([{ "game_uuid": str(new_player["game_uuid"]) }, ])
@@ -277,7 +296,7 @@ def leaderboard(game_player_id: hug.types.number = None, game_uuid: hug.types.uu
 
     if game_player_id:
 
-        db.cursor.execute("""SELECT game_player_id, 
+        db_cursor.execute("""SELECT game_player_id, 
             SUM(kills) AS kills, SUM(deaths) AS deaths
             FROM leaderboard
             WHERE game_player_id = %s
@@ -285,7 +304,7 @@ def leaderboard(game_player_id: hug.types.number = None, game_uuid: hug.types.uu
 
     elif game_uuid:
 
-        db.cursor.execute("""SELECT game_player_id, 
+        db_cursor.execute("""SELECT game_player_id, 
             SUM(kills) AS kills, SUM(deaths) AS deaths
             FROM leaderboard l
             JOIN game_player gp USING (game_player_id)
@@ -294,7 +313,7 @@ def leaderboard(game_player_id: hug.types.number = None, game_uuid: hug.types.uu
 
     elif leaderboard_id:
 
-        db.cursor.execute("""SELECT game_player_id, 
+        db_cursor.execute("""SELECT game_player_id, 
             SUM(kills) AS kills, SUM(deaths) AS deaths
             FROM leaderboard l
             WHERE leaderboard_id = %s
@@ -304,11 +323,11 @@ def leaderboard(game_player_id: hug.types.number = None, game_uuid: hug.types.uu
         # TODO: aggregate display
         return response_error("Aggregate leaderboard not yet implemented.  For now, at least one parameter must be specified.", 501)
 
-    if db.cursor.rowcount > 0:
+    if db_cursor.rowcount > 0:
 
         results = []
 
-        for row in db.cursor.fetchall():
+        for row in db_cursor.fetchall():
 
             results.append({
                 'game_player_id': row['game_player_id'],
@@ -322,23 +341,29 @@ def leaderboard(game_player_id: hug.types.number = None, game_uuid: hug.types.uu
 
         return response_error("No leaderboard entries found.", 404)
 
+@rollback_on_failure
 @hug.post('/game-player/stats', requires=psk_authentication)
 def leaderboard_add(game_player_id: hug.types.number, kills: hug.types.number, 
     deaths: hug.types.number):
     """ Add a leaderboard entry for a player """
 
-    db.cursor.execute("""INSERT INTO leaderboard (game_player_id, kills, deaths)
-        VALUES (%s, %s, %s)""", [game_player_id, kills, deaths])
+    try:
+        db_cursor.execute("""INSERT INTO leaderboard (game_player_id, kills, deaths)
+            VALUES (%s, %s, %s)""", [game_player_id, kills, deaths])
+    except Exception as e:
+        log.error(str(e))
+        return response_error("Internal pygsm error. See logs for more details.")
 
-    if db.cursor.rowcount < 1:
+    if db_cursor.rowcount < 1:
         errmsg = "Player stats insert failed!"
         log.error(errmsg)
-        db.conn.rollback()
+        db_connection.rollback()
         return response_error(errmsg)
     else:
-        db.conn.commit()
+        db_connection.commit()
         return response_positive("Successfully added player stats.")
 
+@rollback_on_failure
 @hug.post('/register-kill', requires=psk_authentication)
 def leaderboard_register_kill(alive_game_player_id: hug.types.number, 
     dead_game_player_id: hug.types.number = None):
@@ -358,30 +383,30 @@ def leaderboard_register_kill(alive_game_player_id: hug.types.number,
 
         try:
 
-            db.cursor.execute("""INSERT INTO leaderboard (game_player_id, kills, deaths)
+            db_cursor.execute("""INSERT INTO leaderboard (game_player_id, kills, deaths)
             VALUES (%s, %s, %s)""", [alive_game_player_id, 1, 0])
 
-            if db.cursor.rowcount < 1:
+            if db_cursor.rowcount < 1:
                 errmsg = "Player kill increment failed!"
                 log.error(errmsg)
-                db.conn.rollback()
+                db_connection.rollback()
                 error = True
                 error_messages.append(errmsg)
             else:
-                db.conn.commit()
+                db_connection.commit()
 
         except IntegrityError:
             errmsg = "Player kill increment failed! Invalid game_player_id?"
             log.error(errmsg)
-            db.conn.rollback()
+            db_connection.rollback()
             error = True
             error_code = 400
             error_messages.append(errmsg)
         except Exception as e:
             log.error(str(e))
-            db.conn.rollback()
+            db_connection.rollback()
             error = True
-            error_messages.append(str(e))
+            error_messages.append("Internal pygsm error. See logs for more details.")
 
     # Now handle the death of the dead player
 
@@ -389,30 +414,30 @@ def leaderboard_register_kill(alive_game_player_id: hug.types.number,
 
         try:
         
-            db.cursor.execute("""INSERT INTO leaderboard (game_player_id, kills, deaths)
+            db_cursor.execute("""INSERT INTO leaderboard (game_player_id, kills, deaths)
             VALUES (%s, %s, %s)""", [dead_game_player_id, 0, 1])
 
-            if db.cursor.rowcount < 1:
+            if db_cursor.rowcount < 1:
                 errmsg = "Player death increment failed!"
                 log.error(errmsg)
-                db.conn.rollback()
+                db_connection.rollback()
                 error = True
                 error_messages.append(errmsg)
             else:
-                db.conn.commit()
+                db_connection.commit()
 
         except IntegrityError:
             errmsg = "Player death increment failed! Invalid game_player_id?"
             log.error(errmsg)
-            db.conn.rollback()
+            db_connection.rollback()
             error = True
             error_code = 400
             error_messages.append(errmsg)
         except Exception as e:
             log.error(str(e))
-            db.conn.rollback()
+            db_connection.rollback()
             error = True
-            error_messages.append(str(e))
+            error_messages.append("Internal pygsm error. See logs for more details.")
     
     if error:
         return response_error(' '.join(error_messages), code=error_code)
