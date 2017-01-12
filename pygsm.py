@@ -224,7 +224,7 @@ def server(hostname: hug.types.text, port: hug.types.number):
         return response_error("No servers found", 404)
 
 @hug.get('/game-player', examples="game_player_id=1")
-def game_player(game_player_id: hug.types.number = None):
+def game_player(game_player_id: hug.types.number = None, game_uuid: hug.types.uuid = None):
     """ Show player(s) and their data """
 
     if game_player_id:
@@ -232,6 +232,12 @@ def game_player(game_player_id: hug.types.number = None):
         db_cursor.execute("""SELECT game_player_id, game_uuid, meta 
             FROM game_player gp
             WHERE game_player_id = %s""", [game_player_id])
+
+    elif game_uuid:
+
+        db_cursor.execute("""SELECT game_player_id, game_uuid, meta 
+            FROM game_player gp
+            WHERE game_uuid = %s""", [game_uuid])
 
     else:
 
