@@ -20,7 +20,7 @@ not, see <http://www.gnu.org/licenses/>.
 """
 import hug
 from urllib import parse
-from psycopg2 import IntegrityError
+from psycopg2 import IntegrityError, ProgrammingError
 from psycopg2.extras import Json
 from marshmallow import fields
 
@@ -102,15 +102,15 @@ def server(dev=False):
 @hug.post('/server', requires=psk_authentication)
 def ping(hostname: hug.types.text, port: hug.types.number, 
     name: hug.types.text, activePlayers: hug.types.number, 
-    gameid: hug.types.text, maxPlayers: hug.types.number = 8, 
+    game_uuid: hug.types.uuid = None, maxPlayers: hug.types.number = 8, 
     dev: hug.types.boolean = False):
     """ Add/update new server """
 
-    log.info("ping(hostname: %s, port: %s, name: %s, activePlayers: %s, gameid: %s, maxPlayers: %s, dev: %s)" % (hostname, port, name, activePlayers, gameid, maxPlayers, dev))
+    log.info("ping(hostname: %s, port: %s, name: %s, activePlayers: %s, game_uuid: %s, maxPlayers: %s, dev: %s)" % (hostname, port, name, activePlayers, game_uuid, maxPlayers, dev))
 
     # things we'll populate later, maybe
     latest = None
-    game_uuid = None
+    new_game = False
 
     # Look for previous entries for this server
     db.cursor.execute("""SELECT 
@@ -123,43 +123,50 @@ def ping(hostname: hug.types.text, port: hug.types.number,
 
     if db.cursor.rowcount > 0:
         latest = db.cursor.fetchone()
-        game_uuid = latest['game_uuid']
+        if game_uuid != latest['game_uuid']:
+            new_game = True
 
     # if we don't already have the game_uuid, we need to get one or 
     # create one
     if not game_uuid:
+        # create a new game entry
+        db.cursor.execute("INSERT INTO game (stamp) VALUES (now()) RETURNING game_uuid")
 
-        # Get the game_uuid
-        db.cursor.execute("SELECT game_uuid FROM game WHERE game_id = %s", [gameid])
-
-        # if it doesn't exist...
-        if db.cursor.rowcount < 1:
-
-            # create a new game entry
-            db.cursor.execute("INSERT INTO game (game_uuid, game_id, stamp) VALUES (uuid_generate_v4(), %s, now()) RETURNING game_uuid", [gameid])
-
-            # if that was successful...
-            if db.cursor.rowcount > 0:
-
-                # get the game_uuid we just created
-                game_uuid = db.cursor.fetchone()[0]
-
-            # if it wasn't...
-            else:
-
-                # scream.
-                errmsg = "Error creating new game entry."
-                log.error(errmsg)
-                return response_error(errmsg)
-
-        # if it does exist...
+        # if that was successful...
+        if db.cursor.rowcount > 0:
+            db.conn.commit()
+            # get the game_uuid we just created
+            game_uuid = db.cursor.fetchone()[0]
+            
+        # if it wasn't...
         else:
 
-            # get the game_uuid
-            game_uuid = db.cursor.fetchone()[0]
+            # scream.
+            errmsg = "Error creating new game entry."
+            log.error(errmsg)
+            return response_error(errmsg)
+    elif new_game:
+        # create a new game entry
+        try:
+            db.cursor.execute("INSERT INTO game (game_uuid, stamp) VALUES (%s, now()) RETURNING game_uuid", (game_uuid, ))
+        except IntegrityError as e:
+            log.error(str(e))
+            return response_error("Could not create new game with provided game_uuid")
+
+        # if that was successful...
+        if db.cursor.rowcount > 0:
+            db.conn.commit()
+
+        # if it wasn't...
+        else:
+
+            # scream.
+            errmsg = "Error creating new game entry."
+            log.error(errmsg)
+            return response_error(errmsg)
 
     # if there's not already an entry for this server...
-    if not latest:
+    if not latest and game_uuid:
 
         # add or update one
         db.cursor.execute("""INSERT INTO ping 
@@ -171,13 +178,17 @@ def ping(hostname: hug.types.text, port: hug.types.number,
             [hostname, port, name, activePlayers, maxPlayers, dev, game_uuid,
             name, activePlayers, maxPlayers, dev, game_uuid])
 
-    if db.cursor.rowcount < 1:
-        log.error("Ping failed!")
-        db.conn.rollback()
-        return response_error("Ping failed for unknown reasons!")
+        if db.cursor.rowcount < 1:
+            log.error("Ping failed!")
+            db.conn.rollback()
+            return response_error("Ping failed for unknown reasons!")
+        else:
+            db.conn.commit()
+            return response_positive("Ping successful!")
+
     else:
-        db.conn.commit()
-        return response_positive("Ping successful!")
+        db.conn.rollback()
+        return response_positive("Ping uneventful!")
 
 @hug.delete('/server')
 def server(hostname: hug.types.text, port: hug.types.number):
@@ -239,8 +250,12 @@ def game_player(game_player_id: hug.types.number = None):
 def add_player(game_uuid: hug.types.uuid, meta: hug.types.json):
     """ Add a player to the game """
 
-    db.cursor.execute("""INSERT INTO game_player (game_uuid, meta) 
-        VALUES (%s, %s)""", [game_uuid, Json(meta)])
+    try:
+        db.cursor.execute("""INSERT INTO game_player (game_uuid, meta) 
+            VALUES (%s, %s) RETURNING game_uuid""", [game_uuid, Json(meta)])
+    except IntegrityError as e:
+        log.warning(str(e))
+        return response_error("Invalid game_uuid provided")
 
     if db.cursor.rowcount < 1:
         errmsg = "Player insert failed!"
@@ -249,8 +264,11 @@ def add_player(game_uuid: hug.types.uuid, meta: hug.types.json):
         return response_error(errmsg)
     else:
         db.conn.commit()
-        new_player = db.cursor.fetchone()
-        return response([new_player, ])
+        try:
+            new_player = db.cursor.fetchone()
+        except ProgrammingError:
+            new_player = None
+        return response([{ "game_uuid": str(new_player["game_uuid"]) }, ])
 
 @hug.get('/leaderboard')
 def leaderboard(game_player_id: hug.types.number = None, game_uuid: hug.types.uuid = None, 
