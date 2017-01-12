@@ -306,18 +306,19 @@ def leaderboard(game_player_id: hug.types.number = None, game_uuid: hug.types.uu
 
     if game_player_id:
 
-        db_cursor.execute("""SELECT game_player_id, 
-            SUM(kills) AS kills, SUM(deaths) AS deaths
-            FROM leaderboard
-            WHERE game_player_id = %s
+        db_cursor.execute("""SELECT gp.game_player_id, 
+            COALESCE(SUM(kills), 0) AS kills, COALESCE(SUM(deaths), 0) AS deaths
+            FROM game_player gp 
+            LEFT JOIN leaderboard l USING (game_player_id)
+            WHERE gp.game_player_id = %s
             GROUP BY game_player_id""", [game_player_id])
 
     elif game_uuid:
 
         db_cursor.execute("""SELECT game_player_id, 
-            SUM(kills) AS kills, SUM(deaths) AS deaths
-            FROM leaderboard l
-            JOIN game_player gp USING (game_player_id)
+            COALESCE(SUM(kills), 0) AS kills, COALESCE(SUM(deaths), 0) AS deaths
+            FROM game_player gp 
+            LEFT JOIN leaderboard l USING (game_player_id)
             WHERE game_uuid = %s
             GROUP BY game_player_id""", [game_uuid])
 
