@@ -51,6 +51,8 @@ def game(game_uuid: hug.types.uuid = None, dev: hug.types.boolean = False, auth:
 
     if (not auth or auth.anonymous) and dev:
         return response_error("Permission denied", code=403)
+    elif not dev and auth:
+        dev = auth.development
 
     if game_uuid:
         db_cursor.execute("SELECT game_uuid, stamp FROM game WHERE game_uuid=%s AND dev=%s", (game_uuid, dev))
@@ -80,6 +82,8 @@ def server(auth: auth_context = None, dev: hug.types.boolean = False):
 
     if (not auth or auth.anonymous) and dev:
         return response_error("Permission denied", code=403)
+    elif not dev and auth:
+        dev = auth.development
 
     db_cursor.execute("""SELECT ping_id, hostname, port, name, ping, 
         active, max, dev, game_uuid 
@@ -245,6 +249,8 @@ def game_player(game_player_id: hug.types.number = None, game_uuid: hug.types.uu
 
     if (not auth or auth.anonymous) and dev:
         return response_error("Permission denied", code=403)
+    elif not dev and auth:
+        dev = auth.development
 
     if game_player_id:
 
@@ -263,7 +269,8 @@ def game_player(game_player_id: hug.types.number = None, game_uuid: hug.types.uu
         db_cursor.execute("""SELECT game_player_id, game_uuid
             FROM game_player gp
             JOIN game g USING (game_uuid)
-            WHERE g.stamp > now() - interval '%s days'""", [settings['GAME_MAX_AGE']])
+            WHERE g.stamp > now() - interval '%s days'
+            AND g.dev = %s""", (settings['GAME_MAX_AGE'], dev, ))
 
     if db_cursor.rowcount > 0:
         players = []
@@ -325,6 +332,8 @@ def leaderboard(game_player_id: hug.types.number = None, game_uuid: hug.types.uu
 
     if (not auth or auth.anonymous) and dev:
         return response_error("Permission denied", code=403)
+    elif not dev and auth:
+        dev = auth.development
 
     if game_player_id:
 
