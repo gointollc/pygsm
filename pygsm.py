@@ -18,6 +18,9 @@ See the GNU General Public License for more details. You should have
 received a copy of the GNU General Public License along with pygsm. If 
 not, see <http://www.gnu.org/licenses/>.
 """
+__author__ = "GoInto, LLC"
+__version__ = "0.1.0"
+
 import hug
 from urllib import parse
 from psycopg2 import IntegrityError, ProgrammingError
