@@ -146,6 +146,8 @@ def ping(hostname: hug.types.text, port: hug.types.number,
         latest = db_cursor.fetchone()
         if game_uuid != latest['game_uuid']:
             new_game = True
+    else:
+        new_game = True
 
     # if we don't already have the game_uuid, we need to get one or 
     # create one
