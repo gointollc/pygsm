@@ -331,8 +331,9 @@ def add_player(game_uuid: hug.types.uuid, meta: hug.types.json):
         return response([{ "game_uuid": str(new_player["game_uuid"]) }, ])
 
 @hug.get('/leaderboard', requires=psk_optional)
-def leaderboard(game_player_id: hug.types.number = None, game_uuid: hug.types.uuid = None, 
-    leaderboard_id: hug.types.number = None, dev: hug.types.boolean = False):
+def leaderboard(game_player_id: hug.types.number = None, 
+    game_uuid: hug.types.uuid = None, leaderboard_id: hug.types.number = None, 
+    dev: hug.types.boolean = False, auth: auth_context = None):
     """ Show game stats of user(s) """
 
     if (not auth or auth.anonymous) and dev:
