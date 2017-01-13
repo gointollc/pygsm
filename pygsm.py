@@ -19,10 +19,11 @@ received a copy of the GNU General Public License along with pygsm. If
 not, see <http://www.gnu.org/licenses/>.
 """
 __author__ = "GoInto, LLC"
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 import hug
 from urllib import parse
+from datetime import datetime, timedelta
 from psycopg2 import IntegrityError, ProgrammingError
 from psycopg2.extras import Json
 from marshmallow import fields
@@ -138,10 +139,9 @@ def ping(hostname: hug.types.text, port: hug.types.number,
         ping_id, hostname, port, name, ping, active, max, dev, game_uuid 
         FROM ping 
         WHERE hostname = %s AND port = %s 
-        AND ping > now() - interval '5 minutes'
-        ORDER BY ping DESC""", 
+        ORDER BY ping DESC LIMIT 1""", 
         [hostname, port])
-
+    
     if db_cursor.rowcount > 0:
         latest = db_cursor.fetchone()
         if game_uuid != latest['game_uuid']:
@@ -179,7 +179,7 @@ def ping(hostname: hug.types.text, port: hug.types.number,
         except IntegrityError as e:
             log.error(str(e))
             return response_error("Could not create new game with provided game_uuid")
-
+        
         # if that was successful...
         if db_cursor.rowcount > 0:
             db_connection.commit()
@@ -192,8 +192,12 @@ def ping(hostname: hug.types.text, port: hug.types.number,
             log.error(errmsg)
             return response_error(errmsg)
 
-    # if there's not already an entry for this server...
-    if not latest and game_uuid:
+    """ Put the new ping in the DB if: 
+        - it's a new game
+        - there's no latest entry
+        - The latest entry is older than 5 minutes 
+    """
+    if new_game or ((not latest or (latest and latest['ping'] < datetime.now() - timedelta(minutes=5))) and game_uuid):
 
         # add or update one
         try:
