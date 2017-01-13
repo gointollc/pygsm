@@ -114,7 +114,7 @@ class Auth(object):
         if not callable(validator):
             raise InvalidValidator("The provided validator is not callable")
 
-        valid_types[name] = validator
+        self.validators[name] = validator
 
     def validate(self, type_name = 'string'):
         """ Make sure the PSK fits the required format """
@@ -137,9 +137,9 @@ class Auth(object):
         
         if db_cursor.rowcount > 0:
             psk_entry = db_cursor.fetchone()
-            description = psk_entry['description']
-            development = psk_entry['development']
-            anonymous = False
+            self.description = psk_entry['description']
+            self.development = psk_entry['development']
+            self.anonymous = False
             return True
         else:
             return False
@@ -149,10 +149,10 @@ class Auth(object):
 
         if not self.psk:
 
-            anonymous = True
+            self.anonymous = True
 
             # Dev data will be considered protected
-            development = False
+            self.development = False
 
             return True
 

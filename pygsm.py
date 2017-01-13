@@ -54,7 +54,7 @@ def game(game_uuid: hug.types.uuid = None, dev: hug.types.boolean = False, auth:
 
     if (not auth or auth.anonymous) and dev:
         return response_error("Permission denied", code=403)
-    elif not dev and auth:
+    elif dev is None and auth:
         dev = auth.development
 
     if game_uuid:
@@ -85,7 +85,7 @@ def server(auth: auth_context = None, dev: hug.types.boolean = False):
 
     if (not auth or auth.anonymous) and dev:
         return response_error("Permission denied", code=403)
-    elif not dev and auth:
+    elif dev is None and auth:
         dev = auth.development
 
     db_cursor.execute("""SELECT ping_id, hostname, port, name, ping, 
@@ -254,7 +254,7 @@ def game_player(game_player_id: hug.types.number = None, game_uuid: hug.types.uu
 
     if (not auth or auth.anonymous) and dev:
         return response_error("Permission denied", code=403)
-    elif not dev and auth:
+    elif dev is None and auth:
         dev = auth.development
 
     if game_player_id:
@@ -338,7 +338,7 @@ def leaderboard(game_player_id: hug.types.number = None,
 
     if (not auth or auth.anonymous) and dev:
         return response_error("Permission denied", code=403)
-    elif not dev and auth:
+    elif dev is None and auth:
         dev = auth.development
 
     if game_player_id:
