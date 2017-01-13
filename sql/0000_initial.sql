@@ -8,7 +8,8 @@ CREATE EXTENSION "uuid-ossp";
 
 CREATE TABLE game (
     game_uuid uuid UNIQUE PRIMARY KEY DEFAULT uuid_generate_v4(),
-    stamp timestamp DEFAULT NOW() NOT NULL
+    stamp timestamp DEFAULT NOW() NOT NULL,
+    dev boolean DEFAULT TRUE
 );
 CREATE INDEX game__stamp__idx ON game (stamp);
 

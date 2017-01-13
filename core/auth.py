@@ -24,6 +24,8 @@ auth.py
 This file handles authentication for the API on methods that require it.
 """
 import uuid
+from hug.authentication import authenticator
+from core import log
 from core.db import db_connection, db_cursor
 from core.config import settings
 
@@ -68,7 +70,18 @@ def verify_md5(m):
 
     return True
 
-class Auth:
+@authenticator
+def optional_api_key(request, response, verify_user, **kwargs):
+    """Optional API Key Header Authentication
+    """
+    api_key = request.get_header('X-Api-Key')
+    user = verify_user(api_key)
+    if user:
+        return user
+    else:
+        return False
+
+class Auth(object):
     """ Handles authentication and stores information of the user """
 
     # Should be defined with key as name and a verification function as
@@ -88,11 +101,10 @@ class Auth:
     # Description info put in the DB
     description = None
 
-    def __init__(self, psk):
+    # Whether or not this is an anon user
+    anonymous = True
 
-        # sanity check
-        if not psk:
-            raise Exception("Auth must be instantiated with a PSK")
+    def __init__(self, psk = None):
 
         self.psk = psk
 
@@ -127,12 +139,22 @@ class Auth:
             psk_entry = db_cursor.fetchone()
             description = psk_entry['description']
             development = psk_entry['development']
+            anonymous = False
             return True
         else:
             return False
 
     def authenticate(self, type_name = 'string'):
         """ Authenticate with the PSK """
+
+        if not self.psk:
+
+            anonymous = True
+
+            # Dev data will be considered protected
+            development = False
+
+            return True
 
         # validate the PSK
         if not self.validate(type_name):
@@ -147,10 +169,10 @@ class Auth:
 def authenticate(psk):
     """ Authenticate with the PSK """
     auth = Auth(psk)
-
     try:
         auth.authenticate(settings['AUTH_PSK_FORMAT'])
     except AuthenticationFailed:
+        log.info("Authentication failed")
         return None
 
     return auth

@@ -27,25 +27,37 @@ from marshmallow import fields
 from core import log, zero_uuid
 from core.db import db_connection, db_cursor
 from core.config import settings
-from core.auth import authenticate
+from core.auth import authenticate, optional_api_key
 from core.decorators import rollback_on_failure
 from utilities import response, response_positive, response_error
 
 # setup auth
 psk_authentication = hug.authentication.api_key(authenticate)
+psk_optional = optional_api_key(authenticate)
+
+@hug.directive()
+def auth_context(default=None, request=None, *args, **kwargs):
+    """ Returns the current logged in user """
+    return request.context.get('user')
 
 @hug.http('/auth-test', accept=('GET', 'POST'), requires=psk_authentication)
 def auth_test():
     """ Simple authentication test """
     return response_positive("Success")
 
-@hug.get('/game', examples='game_uuid=777ab9da-bc9a-4fe5-88da-b925e44909b3')
-def game(game_uuid: hug.types.uuid = None):
+@hug.get('/game', examples='game_uuid=777ab9da-bc9a-4fe5-88da-b925e44909b3', requires=psk_optional)
+def game(game_uuid: hug.types.uuid = None, dev: hug.types.boolean = False, auth: auth_context = None):
     """ Returns basic game information """
+
+    if (not auth or auth.anonymous) and dev:
+        return response_error("Permission denied", code=403)
+    elif not dev and auth:
+        dev = auth.development
+
     if game_uuid:
-        db_cursor.execute("SELECT game_uuid, stamp FROM game WHERE game_uuid=%s", [game_uuid])
+        db_cursor.execute("SELECT game_uuid, stamp FROM game WHERE game_uuid=%s AND dev=%s", (game_uuid, dev))
     else:
-        db_cursor.execute("SELECT game_uuid, stamp FROM game WHERE stamp > now() - interval '%s days'", [settings['GAME_MAX_AGE']])
+        db_cursor.execute("SELECT game_uuid, stamp FROM game WHERE stamp > now() - interval '%s days' AND dev = %s", (settings['GAME_MAX_AGE'], dev, ))
 
     if db_cursor.rowcount > 0:
 
@@ -64,17 +76,22 @@ def game(game_uuid: hug.types.uuid = None):
 
         return response_error("No games found", 404)
 
-@hug.get('/server')
-def server(dev=False):
+@hug.get('/server', requires=psk_optional)
+def server(auth: auth_context = None, dev: hug.types.boolean = False):
     """ Get active servers """
+
+    if (not auth or auth.anonymous) and dev:
+        return response_error("Permission denied", code=403)
+    elif not dev and auth:
+        dev = auth.development
 
     db_cursor.execute("""SELECT ping_id, hostname, port, name, ping, 
         active, max, dev, game_uuid 
         FROM ping
         WHERE ping > now() - interval '5 minutes'
         AND down = false
-        ORDER BY RANDOM()""")
-
+        AND dev = %s
+        ORDER BY RANDOM()""", (dev, ))
 
     if db_cursor.rowcount > 0:
 
@@ -102,8 +119,10 @@ def server(dev=False):
 def ping(hostname: hug.types.text, port: hug.types.number, 
     name: hug.types.text, activePlayers: hug.types.number, 
     game_uuid: hug.types.uuid = None, maxPlayers: hug.types.number = 8, 
-    dev: hug.types.boolean = False):
+    auth: auth_context = None):
     """ Add/update new server """
+    
+    dev = auth.development
 
     log.info("ping(hostname: %s, port: %s, name: %s, activePlayers: %s, game_uuid: %s, maxPlayers: %s, dev: %s)" % (hostname, port, name, activePlayers, game_uuid, maxPlayers, dev))
 
@@ -130,7 +149,7 @@ def ping(hostname: hug.types.text, port: hug.types.number,
     if not game_uuid:
         # create a new game entry
         try:
-            db_cursor.execute("INSERT INTO game (stamp) VALUES (now()) RETURNING game_uuid")
+            db_cursor.execute("INSERT INTO game (stamp, dev) VALUES (now(), %s) RETURNING game_uuid", (dev, ))
         except Exception as e:
             log.error(str(e))
             return response_error("Internal pygsm error. See logs for more details.")
@@ -151,7 +170,7 @@ def ping(hostname: hug.types.text, port: hug.types.number,
     elif new_game:
         # create a new game entry
         try:
-            db_cursor.execute("INSERT INTO game (game_uuid, stamp) VALUES (%s, now()) RETURNING game_uuid", (game_uuid, ))
+            db_cursor.execute("INSERT INTO game (game_uuid, stamp, dev) VALUES (%s, now(), %s) RETURNING game_uuid", (game_uuid, dev, ))
         except IntegrityError as e:
             log.error(str(e))
             return response_error("Could not create new game with provided game_uuid")
@@ -200,7 +219,7 @@ def ping(hostname: hug.types.text, port: hug.types.number,
         return response_positive("Ping uneventful!")
 
 @rollback_on_failure
-@hug.delete('/server')
+@hug.delete('/server', requires=psk_authentication)
 def server(hostname: hug.types.text, port: hug.types.number):
     """ Remove an active server """
 
@@ -223,9 +242,15 @@ def server(hostname: hug.types.text, port: hug.types.number):
         db_connection.rollback()
         return response_error("No servers found", 404)
 
-@hug.get('/game-player', examples="game_player_id=1")
-def game_player(game_player_id: hug.types.number = None, game_uuid: hug.types.uuid = None):
+@hug.get('/game-player', examples="game_player_id=1", requires=psk_optional)
+def game_player(game_player_id: hug.types.number = None, game_uuid: hug.types.uuid = None, 
+    dev: hug.types.boolean = False, auth: auth_context = None):
     """ Show player(s) and their data """
+
+    if (not auth or auth.anonymous) and dev:
+        return response_error("Permission denied", code=403)
+    elif not dev and auth:
+        dev = auth.development
 
     if game_player_id:
 
@@ -244,7 +269,8 @@ def game_player(game_player_id: hug.types.number = None, game_uuid: hug.types.uu
         db_cursor.execute("""SELECT game_player_id, game_uuid
             FROM game_player gp
             JOIN game g USING (game_uuid)
-            WHERE g.stamp > now() - interval '%s days'""", [settings['GAME_MAX_AGE']])
+            WHERE g.stamp > now() - interval '%s days'
+            AND g.dev = %s""", (settings['GAME_MAX_AGE'], dev, ))
 
     if db_cursor.rowcount > 0:
         players = []
@@ -299,10 +325,15 @@ def add_player(game_uuid: hug.types.uuid, meta: hug.types.json):
             new_player = None
         return response([{ "game_uuid": str(new_player["game_uuid"]) }, ])
 
-@hug.get('/leaderboard')
+@hug.get('/leaderboard', requires=psk_optional)
 def leaderboard(game_player_id: hug.types.number = None, game_uuid: hug.types.uuid = None, 
-    leaderboard_id: hug.types.number = None):
+    leaderboard_id: hug.types.number = None, dev: hug.types.boolean = False):
     """ Show game stats of user(s) """
+
+    if (not auth or auth.anonymous) and dev:
+        return response_error("Permission denied", code=403)
+    elif not dev and auth:
+        dev = auth.development
 
     if game_player_id:
 
