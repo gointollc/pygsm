@@ -134,98 +134,45 @@ def ping(hostname: hug.types.text, port: hug.types.number,
     latest = None
     new_game = False
 
-    # Look for previous entries for this server
-    db_cursor.execute("""SELECT 
-        ping_id, hostname, port, name, ping, active, max, dev, game_uuid 
-        FROM ping 
-        WHERE hostname = %s AND port = %s 
-        ORDER BY ping DESC LIMIT 1""", 
-        [hostname, port])
-    
-    if db_cursor.rowcount > 0:
-        latest = db_cursor.fetchone()
-        if game_uuid != latest['game_uuid']:
-            new_game = True
-    else:
-        new_game = True
-
-    # if we don't already have the game_uuid, we need to get one or 
-    # create one
-    if not game_uuid:
-        # create a new game entry
-        try:
+    # create a new game entry
+    try:
+        if game_uuid:
+            db_cursor.execute("INSERT INTO game (game_uuid, stamp, dev) VALUES (%s, now(), %s) ON CONFLICT DO NOTHING RETURNING game_uuid", (game_uuid, dev, ))
+        else:
             db_cursor.execute("INSERT INTO game (stamp, dev) VALUES (now(), %s) RETURNING game_uuid", (dev, ))
-        except Exception as e:
-            log.error(str(e))
-            return response_error("Internal pygsm error. See logs for more details.")
+    except Exception as e:
+        log.error(str(e))
+        return response_error("Could not create new game.", code=500)
+    finally:
 
-        # if that was successful...
-        if db_cursor.rowcount > 0:
+        if db_cursor.rowcount > 1:
             db_connection.commit()
-            # get the game_uuid we just created
-            game_uuid = db_cursor.fetchone()[0]
-            
-        # if it wasn't...
-        else:
+            game_uuid = db_cursor.fetchone()['game_uuid']
+            new_game = True
 
-            # scream.
-            errmsg = "Error creating new game entry."
-            log.error(errmsg)
-            return response_error(errmsg)
-    elif new_game:
-        # create a new game entry
-        try:
-            db_cursor.execute("INSERT INTO game (game_uuid, stamp, dev) VALUES (%s, now(), %s) RETURNING game_uuid", (game_uuid, dev, ))
-        except IntegrityError as e:
-            log.error(str(e))
-            return response_error("Could not create new game with provided game_uuid")
-        
-        # if that was successful...
-        if db_cursor.rowcount > 0:
-            db_connection.commit()
+    # add or update ping
+    try:
 
-        # if it wasn't...
-        else:
+        db_cursor.execute("""INSERT INTO ping 
+            (hostname, port, name, ping, active, max, dev, game_uuid) 
+            VALUES (%s, %s, %s, now(), %s, %s, %s, %s)
+            ON CONFLICT ON CONSTRAINT ping_hostname_port_key DO UPDATE 
+            SET name = %s, ping = now(), active = %s, max = %s, dev = %s, 
+            game_uuid = %s, down = false""", 
+            (hostname, port, name, activePlayers, maxPlayers, dev, game_uuid,
+            name, activePlayers, maxPlayers, dev, game_uuid))
 
-            # scream.
-            errmsg = "Error creating new game entry."
-            log.error(errmsg)
-            return response_error(errmsg)
+    except Exception as e:
+        log.error(str(e))
+        return response_error("Internal pygsm error. See logs for more details.")
 
-    """ Put the new ping in the DB if: 
-        - it's a new game
-        - there's no latest entry
-        - The latest entry is older than 5 minutes 
-    """
-    if new_game or ((not latest or (latest and latest['ping'] < datetime.now() - timedelta(minutes=5))) and game_uuid):
-
-        # add or update one
-        try:
-
-            db_cursor.execute("""INSERT INTO ping 
-                (hostname, port, name, ping, active, max, dev, game_uuid) 
-                VALUES (%s, %s, %s, now(), %s, %s, %s, %s)
-                ON CONFLICT ON CONSTRAINT ping_hostname_port_key DO UPDATE 
-                SET name = %s, ping = now(), active = %s, max = %s, dev = %s, 
-                game_uuid = %s, down = false""", 
-                [hostname, port, name, activePlayers, maxPlayers, dev, game_uuid,
-                name, activePlayers, maxPlayers, dev, game_uuid])
-
-        except Exception as e:
-            log.error(str(e))
-            return response_error("Internal pygsm error. See logs for more details.")
-
-        if db_cursor.rowcount < 1:
-            log.error("Ping failed!")
-            db_connection.rollback()
-            return response_error("Ping failed for unknown reasons!")
-        else:
-            db_connection.commit()
-            return response_positive("Ping successful!")
-
-    else:
+    if db_cursor.rowcount < 1:
+        log.error("Ping failed!")
         db_connection.rollback()
-        return response_positive("Ping uneventful!")
+        return response_error("Ping failed for unknown reasons!")
+    else:
+        db_connection.commit()
+        return response_positive("Ping successful!")
 
 @rollback_on_failure
 @hug.delete('/server', requires=psk_authentication)
