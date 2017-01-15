@@ -294,7 +294,7 @@ def leaderboard(game_player_id: hug.types.number = None,
 
     if game_player_id:
 
-        db_cursor.execute("""SELECT gp.game_player_id, 
+        db_cursor.execute("""SELECT gp.game_player_id,  gp.game_uuid, gp.meta, 
             COALESCE(SUM(kills), 0) AS kills, COALESCE(SUM(deaths), 0) AS deaths
             FROM game_player gp 
             LEFT JOIN leaderboard l USING (game_player_id)
@@ -303,7 +303,7 @@ def leaderboard(game_player_id: hug.types.number = None,
 
     elif game_uuid:
 
-        db_cursor.execute("""SELECT game_player_id, 
+        db_cursor.execute("""SELECT game_player_id,  gp.game_uuid, gp.meta, 
             COALESCE(SUM(kills), 0) AS kills, COALESCE(SUM(deaths), 0) AS deaths
             FROM game_player gp 
             LEFT JOIN leaderboard l USING (game_player_id)
@@ -312,11 +312,12 @@ def leaderboard(game_player_id: hug.types.number = None,
 
     elif leaderboard_id:
 
-        db_cursor.execute("""SELECT game_player_id, 
+        db_cursor.execute("""SELECT gp.game_player_id, gp.game_uuid, gp.meta, 
             SUM(kills) AS kills, SUM(deaths) AS deaths
             FROM leaderboard l
+            JOIN game_player gp USING (game_player_id)
             WHERE leaderboard_id = %s
-            GROUP BY game_player_id""", [leaderboard_id])
+            GROUP BY gp.game_player_id""", [leaderboard_id])
 
     else:
         # TODO: aggregate display
@@ -329,10 +330,14 @@ def leaderboard(game_player_id: hug.types.number = None,
         for row in db_cursor.fetchall():
 
             results.append({
-                'game_player_id': row['game_player_id'],
                 'kills': row['kills'],
                 'deaths': row['deaths'],
-                })
+                'game_player': {
+                    'game_player_id': row['game_player_id'],
+                    'game_uuid': str(row['game_uuid']),
+                    'meta': row['meta'],
+                }
+            })
 
         return response(results)
 
