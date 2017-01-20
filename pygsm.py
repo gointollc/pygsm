@@ -260,7 +260,7 @@ def add_player(game_uuid: hug.types.uuid, meta: hug.types.json):
 
     try:
         db_cursor.execute("""INSERT INTO game_player (game_uuid, meta) 
-            VALUES (%s, %s) RETURNING game_uuid""", [game_uuid, Json(meta)])
+            VALUES (%s, %s) RETURNING game_player_id""", [game_uuid, Json(meta)])
     except IntegrityError as e:
         log.warning(str(e))
         return response_error("Invalid game_uuid provided")
@@ -279,7 +279,9 @@ def add_player(game_uuid: hug.types.uuid, meta: hug.types.json):
             new_player = db_cursor.fetchone()
         except ProgrammingError:
             new_player = None
-        return response([{ "game_uuid": str(new_player["game_uuid"]) }, ])
+        return response([{ 
+            "game_player_id": new_player["game_player_id"]
+        }, ])
 
 @hug.get('/leaderboard', requires=psk_optional)
 def leaderboard(game_player_id: hug.types.number = None, 
